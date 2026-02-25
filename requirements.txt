@@ -1,2 +1,6 @@
 streamlit
 streamlit-option-menu
+requests
+pandas
+gTTS
+google-generativeai
