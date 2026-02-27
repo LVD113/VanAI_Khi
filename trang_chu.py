@@ -1,5 +1,6 @@
 # ==========================================
-# FILE: trang_chu.py - FIXED VERSION v2.0
+# FILE: trang_chu.py - FIXED VERSION v2.2
+# Cập nhật: Làm đẹp phần Nhận xét & Fix lỗi rò rỉ cấu trúc Prompt (Tags)
 # ==========================================
 import sys
 import os
@@ -327,21 +328,25 @@ def app():
                         genai.configure(api_key=api_key)
                         model = genai.GenerativeModel([m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods][0])
                         context = "\n".join([f"- {t}: {topics[t]['content']}" for t in selected_topics]) if selected_topics else "Không có kiến thức được chọn"
-                        prompt = f"""
-Vai trò: Bạn là trợ lý AI thông minh. Xưng: 'Tôi' và 'Bạn'.
-Kiến thức: {context}
-Nội dung: {essay_input}
-YÊU CẦU: Trả về ĐÚNG cấu trúc sau:
+                        
+                        # ĐÃ FIX: Rào lại prompt cực chặt, cấm nhại lời
+                        prompt = f"""Bạn là trợ lý AI chuyên chấm thi. Xưng hô: 'Tôi' và 'Bạn'.
+Kiến thức áp dụng: {context}
+
+Bài làm của học viên: 
+{essay_input}
+
+NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòng yêu cầu này. CHỈ TRẢ VỀ ĐÚNG 3 PHẦN NẰM TRONG CÁC THẺ SAU:
+
 [PHAN_1]
 (Viết lại văn bản gốc, bọc lỗi sai trong <red>...</red>, ý hay trong <green>...</green>)
 [/PHAN_1]
 [PHAN_2]
-(Giải thích lỗi sai và gợi ý sửa)
+(Giải thích lỗi sai và gợi ý sửa chi tiết)
 [/PHAN_2]
 [PHAN_3]
 (Code graphviz tóm tắt, mẫu: digraph G {{ rankdir=LR; "A"->"B"; }})
-[/PHAN_3]
-"""
+[/PHAN_3]"""
                         response = model.generate_content(prompt)
                         st.session_state['current_result'] = response.text
                         st.session_state['current_essay'] = essay_input
@@ -351,15 +356,22 @@ YÊU CẦU: Trả về ĐÚNG cấu trúc sau:
 
         if 'current_result' in st.session_state:
             full_res = st.session_state['current_result']
-            try:
-                part1_essay = full_res.split("[PHAN_1]")[1].split("[/PHAN_1]")[0].strip()
-                part2_feedback = full_res.split("[PHAN_2]")[1].split("[/PHAN_2]")[0].strip()
-                part3_graph = full_res.split("[PHAN_3]")[1].split("[/PHAN_3]")[0].strip()
+            
+            p1_match = re.search(r'\[PHAN_1\](.*?)\[/PHAN_1\]', full_res, re.DOTALL)
+            p2_match = re.search(r'\[PHAN_2\](.*?)\[/PHAN_2\]', full_res, re.DOTALL)
+            p3_match = re.search(r'\[PHAN_3\](.*?)\[/PHAN_3\]', full_res, re.DOTALL)
+
+            part1_essay = p1_match.group(1).strip() if p1_match else st.session_state.get('current_essay', '')
+            
+            # ĐÃ FIX: Nếu AI bị ngáo không trả về đúng định dạng -> Không in raw response ra để tránh lộ prompt
+            if p2_match:
+                part2_feedback = p2_match.group(1).strip()
+            else:
+                part2_feedback = "⚠️ **Lỗi hệ thống:** AI phản hồi sai cấu trúc định dạng. Vui lòng bấm '🔄 Nhập bài mới' và phân tích lại!"
+                
+            part3_graph = p3_match.group(1).strip() if p3_match else None
+            if part3_graph:
                 part3_graph = part3_graph.replace("```graphviz", "").replace("```", "").strip()
-            except IndexError:
-                part1_essay = st.session_state.get('current_essay', '')
-                part2_feedback = full_res
-                part3_graph = None
 
             with st.container():
                 st.markdown("##### 🛠️ Bảng điều khiển")
@@ -376,7 +388,12 @@ YÊU CẦU: Trả về ĐÚNG cấu trúc sau:
                 with c_tools[3]:
                     if st.button("💾 Lưu lại", use_container_width=True):
                         h = load_data(HISTORY_FILE)
-                        h.append({"date": datetime.now().strftime("%d/%m"), "score": 0, "feedback": "Đã lưu", "essay": st.session_state.get('current_essay', '')})
+                        h.append({
+                            "date": datetime.now().strftime("%d/%m"), 
+                            "score": 0, 
+                            "feedback": full_res, 
+                            "essay": st.session_state.get('current_essay', '')
+                        })
                         save_data(HISTORY_FILE, h)
                         st.toast("Đã lưu vào bộ nhớ!", icon="✅")
 
@@ -391,10 +408,15 @@ YÊU CẦU: Trả về ĐÚNG cấu trúc sau:
             c_left, c_right = st.columns([1, 1], gap="large")
             with c_left:
                 html_essay = part1_essay.replace("<red>", '<span class="highlight-error">').replace("</red>", '</span>').replace("<green>", '<span class="highlight-success">').replace("</green>", '</span>').replace("\n", "<br>")
-                st.markdown(f'<div class="paper-card"><div class="card-header">📄 BÀI CỦA BẠN</div>{{html_essay}}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="paper-card"><div class="card-header">📄 BÀI CỦA BẠN</div>{html_essay}</div>', unsafe_allow_html=True)
             with c_right:
-                html_feedback = part2_feedback.replace("\n", "<br>")
-                st.markdown(f'<div class="paper-card" style="border-left: 4px solid #7D4698;"><div class="card-header" style="color: #59316B;">🤖 GÓC NHÌN AI</div>{{html_feedback}}</div>', unsafe_allow_html=True)
+                # --- CHUYỂN ĐỔI MARKDOWN SANG HTML TRỰC QUAN ---
+                html_feedback = re.sub(r'\*\*(.*?)\*\*', r'<b style="color: #59316B;">\1</b>', part2_feedback)
+                html_feedback = re.sub(r'(?m)^\s*[\*\-]\s+', '&#8226; ', html_feedback)
+                html_feedback = html_feedback.replace('*', '')
+                html_feedback = html_feedback.replace("\n", "<br>")
+                
+                st.markdown(f'<div class="paper-card" style="border-left: 4px solid #7D4698;"><div class="card-header" style="color: #59316B;">🤖 GÓC NHÌN AI</div>{html_feedback}</div>', unsafe_allow_html=True)
 
     elif choice == "Tiến trình học":
         st.title("📈 Biểu đồ năng lực")
@@ -448,6 +470,7 @@ YÊU CẦU: Trả về ĐÚNG cấu trúc sau:
     elif choice == "Lịch sử":
         st.title("Nhật ký học tập")
         history = load_data(HISTORY_FILE)
+        
         if not history: 
             st.info("Chưa có bài nào.")
         else:
@@ -455,11 +478,42 @@ YÊU CẦU: Trả về ĐÚNG cấu trúc sau:
                 score = item.get('score', 'N/A')
                 date = item.get('date', 'Không rõ ngày')
                 essay_content = item.get('essay', '') 
-                with st.expander(f"Điểm: {score} | 📅 {date}"):
+                feedback_content = item.get('feedback', 'Không có nhận xét.')
+                
+                with st.expander(f"Mục ngày 📅 {date}"):
                     if essay_content: 
-                        st.write(f"**Đề/Bài làm:** {essay_content[:100]}...")
+                        st.markdown("**📄 BÀI LÀM GỐC CỦA BẠN:**")
+                        st.info(essay_content)
+                        
                     st.markdown("---")
-                    st.write(item.get('feedback', 'Không có nhận xét.'))
+                    st.markdown("**🤖 PHẦN ĐÃ SỬA VÀ NHẬN XÉT:**")
+                    
+                    # CHỖ NÀY CŨNG ĐÃ ĐƯỢC SỬA Regex cho phần lịch sử
+                    p1_hist = re.search(r'\[PHAN_1\](.*?)\[/PHAN_1\]', feedback_content, re.DOTALL)
+                    p2_hist = re.search(r'\[PHAN_2\](.*?)\[/PHAN_2\]', feedback_content, re.DOTALL)
+
+                    if p1_hist and p2_hist:
+                        part1 = p1_hist.group(1).strip()
+                        part2 = p2_hist.group(1).strip()
+                        
+                        html_essay_hist = part1.replace("<red>", '<span class="highlight-error">').replace("</red>", '</span>').replace("<green>", '<span class="highlight-success">').replace("</green>", '</span>').replace("\n", "<br>")
+                        
+                        formatted_part2 = re.sub(r'\*\*(.*?)\*\*', r'<b style="color:#59316B;">\1</b>', part2)
+                        formatted_part2 = re.sub(r'(?m)^\s*[\*\-]\s+', '&#8226; ', formatted_part2)
+                        formatted_part2 = formatted_part2.replace('*', '')
+                        formatted_part2 = formatted_part2.replace('\n', '<br>')
+
+                        col_hist1, col_hist2 = st.columns([1, 1], gap="medium")
+                        with col_hist1:
+                            st.markdown(f'<div class="paper-card"><div class="card-header">Sửa trên bài</div>{html_essay_hist}</div>', unsafe_allow_html=True)
+                        with col_hist2:
+                            st.markdown(f'<div class="paper-card" style="border-left: 4px solid #7D4698;"><div class="card-header">Nhận xét</div>{formatted_part2}</div>', unsafe_allow_html=True)
+                    else:
+                        # Làm sạch các tag nếu AI trả lỗi cấu trúc để không bị lộ
+                        clean_fb = re.sub(r'\[/?PHAN_\d\]', '', feedback_content).strip()
+                        st.write(clean_fb)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
                     if st.button("Xóa bài này", key=f"del_hist_{i}"):
                         history.pop(i)
                         save_data(HISTORY_FILE, history)
