@@ -4,20 +4,21 @@
 import sys
 import os
 
-# Ép Python phải nhìn vào đúng thư mục chứa file web_ai.py này
+# Ép Python phải nhìn vào đúng thư mục chứa file
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
+
 import streamlit as st
 from streamlit_option_menu import option_menu
 import requests
-import os
 import re
 import json
 import pandas as pd
 from datetime import datetime
 from gtts import gTTS
 import google.generativeai as genai
+
 # Try-except cho các module có thể thiếu
 try:
     from streamlit_lottie import st_lottie
@@ -34,20 +35,16 @@ try:
 except ImportError:
     def apply_custom_style(): pass
 
-# --- CẤU HÌNH DỮ LIỆU ---
-KNOWLEDGE_FILE = "brain.json"
-HISTORY_FILE = "history.json"
-
 # --- CÁC HÀM HỖ TRỢ (NẰM NGOÀI APP) ---
 def load_data(filename):
     if not os.path.exists(filename):
-        default_data = [] if filename == HISTORY_FILE else {}
+        default_data = [] if "history" in filename else {}
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(default_data, f)
         return default_data
     with open(filename, "r", encoding="utf-8") as f:
         try: return json.load(f)
-        except: return [] if filename == HISTORY_FILE else {}
+        except: return [] if "history" in filename else {}
 
 def save_data(filename, data):
     with open(filename, "w", encoding="utf-8") as f:
@@ -79,7 +76,31 @@ def load_lottieurl(url: str):
 def app():
     apply_custom_style() # Kích hoạt CSS từ file style.py
     
-    # --- THÊM MỚI TỪ ĐÂY: CSS TOÀN CỤC CHO NỀN VÀ NÚT BẤM ---
+    # --- XỬ LÝ DỮ LIỆU CÁ NHÂN HÓA ---
+    current_user = st.session_state.get('user_name', 'Khach')
+    
+    # 1. Tạo thư mục data_users nếu chưa có
+    if not os.path.exists("data_users"):
+        os.makedirs("data_users")
+        
+    # 2. Tạo thư mục riêng cho user hiện tại
+    user_folder = f"data_users/{current_user}"
+    if not os.path.exists(user_folder):
+        os.makedirs(user_folder)
+        
+    # 3. Gán file dữ liệu vào đúng thư mục user
+    KNOWLEDGE_FILE = f"{user_folder}/brain.json"
+    HISTORY_FILE = f"{user_folder}/history.json"
+    CONFIG_FILE = f"{user_folder}/config.json" # File lưu cấu hình & API Key
+    
+    # Đọc config (chứa trạng thái onboarding và api_key nếu có)
+    user_config = {}
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            user_config = json.load(f)
+    saved_api_key = user_config.get("api_key", "") # Lấy API Key đã lưu (nếu có)
+    
+    # --- CSS TOÀN CỤC CHO NỀN VÀ NÚT BẤM ---
     st.markdown("""
     <style>
     /* 1. Background Ombre tím xuống (Từ Tím nhạt pha trắng xuống Nền sáng #F8F4F9) */
@@ -112,13 +133,39 @@ def app():
     }
     </style>
     """, unsafe_allow_html=True)
-    # --- KẾT THÚC PHẦN THÊM MỚI ---
     
     # --- MENU ĐIỀU HƯỚNG BÊN TRÁI ---
     with st.sidebar:
         st.markdown("<h2 style='text-align: center; margin:0;'>ALEXANDER</h2>", unsafe_allow_html=True)
         st.caption("AI Grading System v3.0 Pro")
         
+        # --- THÔNG TIN USER ---
+        st.markdown("---")
+        st.write(f"👤 Xin chào: **{current_user}**")
+        
+        # --- DI CHUYỂN LÊN ĐẦU: CẤU HÌNH API KEY ---
+        api_key = st.text_input("🔑 API Key:", type="password", value=saved_api_key)
+        
+        # Nếu nhập key mới thì tự động lưu vào config.json
+        if api_key and api_key != saved_api_key:
+            user_config["api_key"] = api_key
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(user_config, f)
+        
+        # Hướng dẫn lấy API Key
+        with st.expander("❓ Trợ giúp: Cách lấy API Key"):
+            st.markdown('''
+                <ol style="font-size: 13px; padding-left: 20px;">
+                    <li>Vào <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: #7D4698;"><b>Google AI Studio</b></a></li>
+                    <li>Đăng nhập bằng Gmail</li>
+                    <li>Bấm nút <b>Create API key</b></li>
+                    <li>Copy mã và dán vào ô bên trên</li>
+                </ol>
+            ''', unsafe_allow_html=True)
+            
+        st.markdown("---")
+        
+        # --- MENU TÍNH NĂNG ---
         choice = option_menu(
             menu_title=None,
             options=["Trang chủ", "AI Chấm thi", "Tiến trình học", "Huấn luyện não", "Lịch sử"],
@@ -126,65 +173,66 @@ def app():
             default_index=1,
             styles={
                 "container": {"padding": "0!important", "background-color": "transparent"},
-                # SỬA MÀU Ở ĐÂY: Icon chính dùng màu Chủ đạo (#7D4698)
                 "icon": {"color": "#7D4698", "font-size": "18px"}, 
-                
-                # SỬA MÀU Ở ĐÂY: Chữ của menu lúc bình thường dùng Tím đậm (#59316B)
                 "nav-link": {"font-size": "15px", "margin": "5px", "color": "#59316B"},
-                
-                # SỬA MÀU Ở ĐÂY: Background khi được chọn dùng màu Chủ đạo (#7D4698)
                 "nav-link-selected": {"background-color": "#7D4698", "color": "white"},
             }
         )
         
         st.markdown("---")
-        api_key = st.text_input("🔑 API Key:", type="password")
         
+        # --- TIẾN TRÌNH / THỐNG KÊ NHANH ---
         topics = load_data(KNOWLEDGE_FILE)
         st.success(f"🧠 Đã học: {len(topics)} chủ đề")
+        
+        # --- DI CHUYỂN XUỐNG CUỐI: NÚT ĐĂNG XUẤT ---
+        st.markdown("---")
+        if st.button("🔴 Đăng xuất", use_container_width=True):
+            # Dọn dẹp session
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            # Reset biến quản lý
+            st.session_state['logged_in'] = False
+            st.session_state['user_name'] = ""
+            st.session_state['onboarding_step'] = 'intro'
+            st.rerun()
 
     # --- LOGIC CÁC TRANG ---
     if choice == "Trang chủ":
         st.markdown("""
         <style>
-        /* SỬA MÀU Ở ĐÂY: Gradient tiêu đề dùng Tím đậm (#59316B) -> Tím nhạt (#A166AB) -> Chủ đạo (#7D4698) */
         .title-gradient {
             background: -webkit-linear-gradient(45deg, #59316B, #A166AB, #7D4698);
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             font-size: 3em; font-weight: 800; margin-bottom: 0px; line-height: 1.2;
         }
         
-        /* SỬA MÀU Ở ĐÂY: Con trỏ nhấp nháy dùng màu Chủ đạo (#7D4698) */
         .typing-container {
             display: inline-block; overflow: hidden; white-space: nowrap;
-            border-right: .15em solid #7D4698; /* Đã đổi màu */
+            border-right: .15em solid #7D4698; 
             animation: typing 3.5s steps(40, end), blink-caret .75s step-end infinite;
             font-family: 'Consolas', 'Courier New', monospace; color: #333;
             font-size: 1.2rem; font-weight: 600; margin-bottom: 20px;
         }
         @keyframes typing { from { width: 0 } to { width: 100% } }
         
-        /* SỬA MÀU Ở ĐÂY: Hiệu ứng nhấp nháy của con trỏ (Chủ đạo #7D4698) */
         @keyframes blink-caret { from, to { border-color: transparent } 50% { border-color: #7D4698; } }
         
-        /* SỬA MÀU Ở ĐÂY: Viền Card dùng Tím nhạt (#A166AB) dạng trong suốt */
         .feature-card {
-            background: rgba(248, 244, 249, 0.8); /* Nền sáng #F8F4F9 */
+            background: rgba(248, 244, 249, 0.8); 
             backdrop-filter: blur(8px);
-            border: 1px solid #A166AB; /* Viền tím nhạt */
+            border: 1px solid #A166AB; 
             border-radius: 16px;
             padding: 20px; transition: all 0.3s ease; height: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         }
         
-        /* SỬA MÀU Ở ĐÂY: Khi hover chuột vào Card -> Viền dùng Chủ đạo (#7D4698), bóng dùng rgba của Chủ đạo */
         .feature-card:hover {
             transform: translateY(-5px); background: #ffffff;
-            box-shadow: 0 10px 15px rgba(125, 70, 152, 0.2); /* Bóng màu tím */
-            border-color: #7D4698; /* Viền chủ đạo */
+            box-shadow: 0 10px 15px rgba(125, 70, 152, 0.2); 
+            border-color: #7D4698; 
         }
         .card-icon { font-size: 2.2rem; margin-bottom: 12px; display: block; }
         
-        /* SỬA MÀU Ở ĐÂY: Tiêu đề Card dùng Tím đậm (#59316B) */
         .card-title { font-weight: 700; font-size: 1.1rem; color: #59316B; margin-bottom: 5px; }
         .card-desc { font-size: 0.95rem; color: #4b5563; line-height: 1.5; }
         </style>
@@ -224,7 +272,7 @@ def app():
                 st.rerun()
                 
         if 'start_btn' in locals() and start_btn:
-            if not api_key: st.error("Thiếu API Key")
+            if not api_key: st.error("⚠️ Bạn chưa nhập API Key ở thanh menu bên trái!")
             elif not essay_input: st.warning("Chưa nhập nội dung")
             else:
                 with st.spinner("Tôi đang đọc và phân tích bài..."):
@@ -292,7 +340,6 @@ def app():
                 st.markdown(f'<div class="paper-card"><div class="card-header">📄 BÀI CỦA BẠN</div>{html_essay}</div>', unsafe_allow_html=True)
             with c_right:
                 html_feedback = part2_feedback.replace("\n", "<br>")
-                # Đổi viền trái sang Chủ đạo #7D4698, nền sang Nền sáng #F8F4F9, màu chữ tiêu đề sang Tím đậm #59316B
                 st.markdown(f'<div class="paper-card" style="border-left: 4px solid #7D4698; background-color: #F8F4F9;"><div class="card-header" style="color: #59316B;">🤖 GÓC NHÌN AI</div>{html_feedback}</div>', unsafe_allow_html=True)
 
     elif choice == "Tiến trình học":
@@ -354,6 +401,3 @@ def app():
                     history.pop(i)
                     save_data(HISTORY_FILE, history)
                     st.rerun()
-                    
-    # Gọi chatbot trôi nổi ở cuối hàm app()
-   
