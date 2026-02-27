@@ -1,9 +1,15 @@
 # ==========================================
 # FILE: trang_chu.py - FIXED VERSION v2.2
 # Cập nhật: Làm đẹp phần Nhận xét & Fix lỗi rò rỉ cấu trúc Prompt (Tags)
+# Đã chuẩn hóa lại lỗi khoảng trắng (Indentation)
 # ==========================================
 import sys
 import os
+import re
+import json
+import requests
+import pandas as pd
+from datetime import datetime
 
 # Ép Python phải nhìn vào đúng thư mục chứa file
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -12,11 +18,6 @@ if current_dir not in sys.path:
 
 import streamlit as st
 from streamlit_option_menu import option_menu
-import requests
-import re
-import json
-import pandas as pd
-from datetime import datetime
 from gtts import gTTS
 import google.generativeai as genai
 
@@ -44,8 +45,10 @@ def load_data(filename):
             json.dump(default_data, f)
         return default_data
     with open(filename, "r", encoding="utf-8") as f:
-        try: return json.load(f)
-        except: return [] if "history" in filename else {}
+        try: 
+            return json.load(f)
+        except: 
+            return [] if "history" in filename else {}
 
 def save_data(filename, data):
     with open(filename, "w", encoding="utf-8") as f:
@@ -378,7 +381,7 @@ NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòn
                 c_tools = st.columns([1.5, 1, 1, 1], gap="small")
                 with c_tools[0]: 
                     show_map = st.toggle("🧠 Bật Mindmap", value=False)
-                with c_tools[1]: 
+                with c_tools[1]:
                     if st.button("🔊 Nghe lỗi", use_container_width=True):
                         audio_file = text_to_speech(part2_feedback[:500])
                         if audio_file: 
@@ -408,15 +411,15 @@ NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòn
             c_left, c_right = st.columns([1, 1], gap="large")
             with c_left:
                 html_essay = part1_essay.replace("<red>", '<span class="highlight-error">').replace("</red>", '</span>').replace("<green>", '<span class="highlight-success">').replace("</green>", '</span>').replace("\n", "<br>")
-                st.markdown(f'<div class="paper-card"><div class="card-header">📄 BÀI CỦA BẠN</div>{{html_essay}}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="paper-card"><div class="card-header">📄 BÀI CỦA BẠN</div>{html_essay}</div>', unsafe_allow_html=True)
             with c_right:
                 # --- CHUYỂN ĐỔI MARKDOWN SANG HTML TRỰC QUAN ---
                 html_feedback = re.sub(r'\*\*(.*?)\*\*', r'<b style="color: #59316B;">\1</b>', part2_feedback)
                 html_feedback = re.sub(r'(?m)^\s*[\*\-]\s+', '&#8226; ', html_feedback)
-                html_feedback = html_feedback.replace('\*', '')
+                html_feedback = html_feedback.replace('*', '')
                 html_feedback = html_feedback.replace("\n", "<br>")
                 
-                st.markdown(f'<div class="paper-card" style="border-left: 4px solid #7D4698;"><div class="card-header" style="color: #59316B;">🤖 GÓC NHÌN AI</div>{{html_feedback}}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="paper-card" style="border-left: 4px solid #7D4698;"><div class="card-header" style="color: #59316B;">🤖 GÓC NHÌN AI</div>{html_feedback}</div>', unsafe_allow_html=True)
 
     elif choice == "Tiến trình học":
         st.title("📈 Biểu đồ năng lực")
@@ -460,7 +463,7 @@ NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòn
                 st.info("Bộ nhớ trống.")
             else:
                 for name, data in topics.items():
-                    with st.expander(f"📚 {name}"): 
+                    with st.expander(f"📚 {name}"):
                         st.code(data['content'])
                         if st.button("Quên (Xóa)", key=f"del_{name}"):
                             del topics[name]
@@ -500,14 +503,14 @@ NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòn
                         
                         formatted_part2 = re.sub(r'\*\*(.*?)\*\*', r'<b style="color:#59316B;">\1</b>', part2)
                         formatted_part2 = re.sub(r'(?m)^\s*[\*\-]\s+', '&#8226; ', formatted_part2)
-                        formatted_part2 = formatted_part2.replace('\*', '')
+                        formatted_part2 = formatted_part2.replace('*', '')
                         formatted_part2 = formatted_part2.replace('\n', '<br>')
 
                         col_hist1, col_hist2 = st.columns([1, 1], gap="medium")
                         with col_hist1:
-                            st.markdown(f'<div class="paper-card"><div class="card-header">Sửa trên bài</div>{{html_essay_hist}}</div>', unsafe_allow_html=True)
+                            st.markdown(f'<div class="paper-card"><div class="card-header">Sửa trên bài</div>{html_essay_hist}</div>', unsafe_allow_html=True)
                         with col_hist2:
-                            st.markdown(f'<div class="paper-card" style="border-left: 4px solid #7D4698;"><div class="card-header">Nhận xét</div>{{formatted_part2}}</div>', unsafe_allow_html=True)
+                            st.markdown(f'<div class="paper-card" style="border-left: 4px solid #7D4698;"><div class="card-header">Nhận xét</div>{formatted_part2}</div>', unsafe_allow_html=True)
                     else:
                         # Làm sạch các tag nếu AI trả lỗi cấu trúc để không bị lộ
                         clean_fb = re.sub(r'\[/?PHAN_\d\]', '', feedback_content).strip()
