@@ -10,6 +10,7 @@ from gtts import gTTS
 
 # Gọi file trang chủ ngay từ đầu luôn
 import trang_chu
+
 # --- 1. CẤU HÌNH TRANG ---
 st.set_page_config(page_title="Alexander Login", page_icon="🔐", layout="wide")
 
@@ -18,6 +19,10 @@ if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 if 'user_name' not in st.session_state:
     st.session_state['user_name'] = ""
+    
+# THÊM MỚI: Biến quản lý các bước Onboarding ('intro', 'tutorial', 'done')
+if 'onboarding_step' not in st.session_state:
+    st.session_state['onboarding_step'] = 'intro'
 
 
 # --- 3. GIAO DIỆN ĐĂNG NHẬP ---
@@ -41,13 +46,23 @@ def login_page():
         100% { background-position: 0% 50%; }
     }
     
+    /* --- PHẦN MỚI: TẠO BẢNG TRẮNG CHO CỘT GIỮA --- */
+    /* Target trực tiếp vào cột thứ 2 trong giao diện 3 cột */
+    [data-testid="column"]:nth-of-type(2) {
+        background-color: rgba(255, 255, 255, 0.95); /* Nền trắng hơi trong suốt */
+        padding: 40px !important; /* Khoảng cách từ viền vào trong */
+        border-radius: 24px; /* Bo góc tròn trịa */
+        box-shadow: 0 15px 35px rgba(89, 49, 107, 0.1); /* Đổ bóng tím nhạt */
+        margin-top: 5vh; /* Đẩy xuống một chút cho cân đối */
+    }
+    
     /* 3. Chỉnh các form input (Chữ đen, nền trắng, viền tím khi click) */
     div[data-testid="stVerticalBlock"] > div {
         gap: 0px !important;
     }
     .stTextInput input {
         color: #000000 !important; /* Chữ màu đen */
-        background-color: #ffffff !important;
+        background-color: #fafafa !important; /* Đổi màu nền input hơi xám nhẹ để nổi trên bảng trắng */
         border: 2px solid #e2e8f0 !important;
         border-radius: 8px !important;
         height: 48px;
@@ -57,6 +72,7 @@ def login_page():
     .stTextInput input:focus {
         border-color: #7D4698 !important;
         box-shadow: 0 0 10px rgba(125, 70, 152, 0.15) !important;
+        background-color: #ffffff !important;
     }
     .stTextInput label {
         color: #111111 !important; /* Label chữ đen/xám đậm */
@@ -91,7 +107,7 @@ def login_page():
         box-shadow: 0 2px 10px rgba(125, 70, 152, 0.3) !important;
     }
 
-    /* 5. Tiêu đề "Khỉ" - Thêm hiệu ứng bay lơ lửng (Floating) */
+    /* 5. Tiêu đề "Chấm Văn AI" - Thêm hiệu ứng bay lơ lửng (Floating) */
     .alexander-title {
         font-size: 60px; 
         font-weight: 900; 
@@ -104,7 +120,32 @@ def login_page():
         filter: drop-shadow(0px 4px 4px rgba(0,0,0,0.1));
         animation: floatTitle 3s ease-in-out infinite; /* Gọi hiệu ứng lơ lửng */
     }
+    /* 5.1 Tiêu đề phụ (Subtitle) - Nhất quán font, hiệu ứng nhịp thở phát sáng */
+    .alexander-subtitle {
+        font-size: 16px; 
+        font-weight: 600; 
+        text-align: center; 
+        color: #7D4698; /* Màu tím tone-sur-tone với tiêu đề chính */
+        margin-top: -20px; /* Kéo sát lại gần tiêu đề chính đang bị margin-bottom */
+        margin-bottom: 30px; 
+        letter-spacing: 3px; /* Kéo dãn khoảng cách chữ cho sang trọng */
+        text-transform: uppercase; /* In hoa toàn bộ */
+        animation: pulseSubtitle 3s ease-in-out infinite; /* Cùng nhịp 3s với tiêu đề nổi */
+    }
     
+    /* Animation nhịp thở cho subtitle */
+    @keyframes pulseSubtitle {
+        0%, 100% { 
+            opacity: 0.7; 
+            transform: scale(1); 
+            text-shadow: 0px 0px 0px rgba(125, 70, 152, 0);
+        }
+        50% { 
+            opacity: 1; 
+            transform: scale(1.02); /* Phóng to cực nhẹ */
+            text-shadow: 0px 0px 12px rgba(125, 70, 152, 0.5); /* Phát sáng viền chữ */
+        }
+    }
     /* Animation lơ lửng cho tiêu đề */
     @keyframes floatTitle {
         0%, 100% { transform: translateY(0); }
@@ -128,11 +169,10 @@ def login_page():
     </style>
     """, unsafe_allow_html=True)
 
-    # Chia cột đẩy form sang phải (Giữ nguyên cấu trúc của bạn)
-    c1, c2 = st.columns([1.5, 1]) 
+    c1, c2, c3 = st.columns([1, 1.2, 1]) 
     
     with c2:
-        st.markdown('<div class="alexander-title">Khỉ</div>', unsafe_allow_html=True)
+        st.markdown('<div class="alexander-title">Chấm Văn AI</div>', unsafe_allow_html=True)
         
         tab1, tab2 = st.tabs(["Đăng Nhập", "Đăng Ký"])
         
@@ -145,9 +185,22 @@ def login_page():
                 is_valid, result = utils.authenticate(username, password)
                 if is_valid:
                     st.session_state['logged_in'] = True
-                    st.session_state['user_name'] = result # Tên hiển thị
+                    st.session_state['user_name'] = result 
+                    
+                    # --- [BỔ SUNG] KIỂM TRA ĐÃ XEM HƯỚNG DẪN CHƯA KHI ĐĂNG NHẬP ---
+                    config_path = f"data_users/{result}/config.json"
+                    if os.path.exists(config_path):
+                        with open(config_path, "r", encoding="utf-8") as f:
+                            conf = json.load(f)
+                            if conf.get("onboarding_done", False):
+                                st.session_state['onboarding_step'] = 'done'
+                            else:
+                                st.session_state['onboarding_step'] = 'intro'
+                    else:
+                        st.session_state['onboarding_step'] = 'intro'
+                    # -------------------------------------------------------------
+                    
                     st.success("Đang vào hệ thống...")
-                    import time # Đảm bảo bạn đã import time ở đầu file web_ai.py
                     time.sleep(1)
                     st.rerun()
                 else:
@@ -170,11 +223,138 @@ def login_page():
                 else:
                     st.warning("Vui lòng điền đầy đủ thông tin.")
 
+# --- BỔ SUNG: GIAO DIỆN ONBOARDING ĐA BƯỚC ---
+def onboarding_page():
+    # Sử dụng chung CSS ẩn sidebar và làm nền giống trang login
+    st.markdown("""
+    <style>
+    [data-testid="stSidebar"] {display: none;}
+    [data-testid="stAppViewContainer"] {
+        background: linear-gradient(-45deg, #ffffff, #F8F4F9, #E8DEF0, #F3E8FF);
+        background-size: 400% 400%;
+        animation: gradientBG 10s ease infinite;
+    }
+    @keyframes gradientBG { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    
+    /* Sử dụng lại class target cột giữa của Streamlit thay vì dùng the <div> để tránh lỗi box trắng thừa */
+    [data-testid="column"]:nth-of-type(2) {
+        background-color: rgba(255, 255, 255, 0.95);
+        padding: 40px !important;
+        border-radius: 24px;
+        box-shadow: 0 15px 35px rgba(89, 49, 107, 0.1);
+        margin-top: 5vh;
+    }
+    header {visibility: hidden;}
+    
+    /* Thiết kế riêng cho nút loại Primary (Chính) */
+    [data-testid="baseButton-primary"] {
+        background: linear-gradient(45deg, #7D4698, #A166AB) !important;
+        color: white !important;
+        border: none !important;
+    }
+    [data-testid="baseButton-primary"]:hover { 
+        transform: translateY(-3px) !important; 
+        box-shadow: 0 8px 25px rgba(125, 70, 152, 0.4) !important; 
+    }
+    
+    /* Thiết kế riêng cho nút loại Secondary (Phụ - Viền tím) */
+    [data-testid="baseButton-secondary"] {
+        background: transparent !important;
+        color: #7D4698 !important;
+        border: 2px solid #7D4698 !important;
+    }
+    [data-testid="baseButton-secondary"]:hover { 
+        background: rgba(125, 70, 152, 0.1) !important;
+        transform: translateY(-3px) !important; 
+    }
+
+    /* Định dạng chung cho mọi nút ở màn hình này */
+    .stButton button {
+        border-radius: 10px !important;
+        padding: 12px !important;
+        font-weight: bold !important;
+        font-size: 15px !important;
+        transition: all 0.3s ease !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # --- [BỔ SUNG] HÀM LƯU LẠI TRẠNG THÁI ONBOARDING VÀO CONFIG ---
+    def set_onboarding_done():
+        user = st.session_state['user_name']
+        os.makedirs(f"data_users/{user}", exist_ok=True)
+        config_path = f"data_users/{user}/config.json"
+        
+        conf = {}
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                conf = json.load(f)
+                
+        conf["onboarding_done"] = True
+        
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(conf, f)
+            
+        st.session_state['onboarding_step'] = 'done'
+    # -------------------------------------------------------------
+
+    c1, c2, c3 = st.columns([1, 2.5, 1])
+    with c2:
+        # BƯỚC 1: GIỚI THIỆU & HỎI ĐÁP
+        if st.session_state['onboarding_step'] == 'intro':
+            st.markdown(f"<h2 style='text-align: center; color: #59316B;'>👋 Chào mừng {st.session_state['user_name']} đến với Alexander!</h2>", unsafe_allow_html=True)
+            st.markdown("""
+            ### 🌟 Hệ thống này hoạt động như thế nào?
+            Alexander là một trợ lý AI phân tích và chấm điểm văn bản nâng cao. Để đảm bảo tốc độ xử lý nhanh nhất, độ chính xác cao và **tuyệt đối bảo mật dữ liệu** cho riêng bạn, hệ thống yêu cầu một chìa khóa kết nối cá nhân gọi là **API Key** (Cấp bởi Google Gemini).
+            
+            **Mỗi khi sử dụng tính năng Chấm thi, bạn sẽ cần nhập API Key này.**
+            """)
+            
+            st.info("💡 Bạn đã có API Key của Google Gemini chưa?")
+            
+            # Chia hai cột cho hai nút để tự động thẳng hàng
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                # Nút Primary (Màu đầy)
+                if st.button("✅ Tôi đã có API Key (Vào Web)", type="primary", use_container_width=True):
+                    set_onboarding_done() # Gọi hàm lưu dữ liệu
+                    st.rerun()
+            with col_btn2:
+                # Nút Secondary (Màu viền)
+                if st.button("❌ Tôi chưa có / Chưa biết lấy", type="secondary", use_container_width=True):
+                    st.session_state['onboarding_step'] = 'tutorial'
+                    st.rerun()
+
+        # BƯỚC 2: HƯỚNG DẪN LẤY API KEY (KÈM VIDEO)
+        elif st.session_state['onboarding_step'] == 'tutorial':
+            st.markdown("<h2 style='text-align: center; color: #59316B;'>🔑 Hướng dẫn lấy API Key (Miễn phí)</h2>", unsafe_allow_html=True)
+            st.markdown("""
+            Chỉ mất khoảng **1 phút** để lấy chìa khóa cá nhân này. Hãy làm theo các bước sau:
+            1. Truy cập vào trang web của Google: [Google AI Studio](https://aistudio.google.com/app/apikey)
+            2. Đăng nhập bằng tài khoản Gmail của bạn.
+            3. Bấm vào nút **Create API key** màu xanh, sau đó nhấn **Copy** dãy mã hiện ra.
+            """)
+            
+            st.markdown("**🎥 Xem video hướng dẫn chi tiết:**")
+            # Đã thay đổi link video mới hướng dẫn lấy API key rõ ràng hơn
+            st.video("https://www.youtube.com/watch?v=BYBeQm_AsCI") 
+            
+            st.warning("⚠️ Khi vào trang chủ, hãy dán dãy mã vừa copy vào ô '🔑 API Key' ở thanh Menu bên trái nhé!")
+            
+            # Sử dụng nút primary cho hành động hoàn thành
+            if st.button("🚀 Tuyệt vời, tôi đã hiểu và sẵn sàng!", type="primary", use_container_width=True):
+                set_onboarding_done() # Gọi hàm lưu dữ liệu
+                st.rerun()
+
 # --- 4. LOGIC ĐIỀU HƯỚNG CHÍNH ---
 if not st.session_state['logged_in']:
+    # 1. Nếu chưa đăng nhập -> Hiện trang Đăng nhập
     login_page()
+elif st.session_state['onboarding_step'] != 'done':
+    # 2. Nếu đã đăng nhập NHƯNG chưa hoàn thành Onboarding -> Hiện trang Onboarding
+    onboarding_page()
 else:
-    # KHI ĐÃ ĐĂNG NHẬP -> GỌI FILE TRANG_CHU
+    # 3. KHI ĐÃ ĐĂNG NHẬP VÀ XEM XONG HƯỚNG DẪN -> GỌI FILE TRANG_CHU
     try:
         import trang_chu  
         trang_chu.app()   
