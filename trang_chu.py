@@ -112,7 +112,11 @@ def load_lottieurl(url: str):
 def app():
     apply_custom_style() 
     
-    MY_API_KEY = "AIzaSyDnuY37Hi_A6NE1fIxWLPIzC8BvivLOtz0" 
+    # Lấy API KEY từ Secrets để không bị Google khóa mã
+    try:
+        MY_API_KEY = st.secrets["GEMINI_API_KEY"]
+    except:
+        MY_API_KEY = ""
     
     current_user = st.session_state.get('user_name', 'Khach')
     
@@ -245,8 +249,8 @@ def app():
                 st.rerun()
                 
         if 'start_btn' in locals() and start_btn:
-            if not MY_API_KEY or MY_API_KEY == "ĐIỀN_API_KEY_CỦA_BẠN_VÀO_ĐÂY": 
-                st.error("⚠️ Chủ hệ thống chưa cài đặt API Key trong mã nguồn!")
+            if not MY_API_KEY: 
+                st.error("⚠️ Chủ hệ thống chưa cài đặt API Key trong mã nguồn (Hãy cài trong file secrets.toml)!")
             elif not essay_input: 
                 st.warning("Chưa nhập nội dung")
             else:
@@ -284,7 +288,7 @@ TUYỆT ĐỐI KHÔNG lặp lại các dòng yêu cầu này. CHỈ TRẢ VỀ �
                         st.session_state['current_essay'] = essay_input
                         st.rerun()
                     except Exception as e: 
-                        st.error(f"Lỗi: {str(e)}")
+                        st.error(f"Lỗi API: {str(e)}")
 
         if 'current_result' in st.session_state:
             full_res = st.session_state['current_result']
@@ -348,7 +352,7 @@ TUYỆT ĐỐI KHÔNG lặp lại các dòng yêu cầu này. CHỈ TRẢ VỀ �
                 
                 st.markdown(f'<div class="paper-card" style="border-left: 4px solid #7D4698;"><div class="card-header" style="color: #59316B;">🤖 GÓC NHÌN AI</div>{html_feedback}</div>', unsafe_allow_html=True)
 
-   # ==========================================
+    # ==========================================
     # [TÍNH NĂNG MỚI] TAB: THƯ VIỆN MẪU CHẤM
     # ==========================================
     elif choice == "Thư viện mẫu chấm":
