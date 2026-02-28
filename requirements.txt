@@ -4,3 +4,4 @@ requests
 pandas
 gTTS
 google-generativeai
+PyPDF2
