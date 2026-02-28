@@ -1,5 +1,5 @@
 # ==========================================
-# FILE: trang_chu.py - FIXED VERSION v2.6 (THÊM THƯ VIỆN MẪU CHẤM)
+# FILE: trang_chu.py - FIXED VERSION v2.6 (THÊM THƯ VIỆN MẪU CHẤM + FIX MINDMAP)
 # ==========================================
 import sys
 import os
@@ -145,6 +145,20 @@ def app():
     table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
     th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
     th { background-color: #f2f2f2; color: #59316B; }
+    
+    /* FIX SƠ ĐỒ MINDMAP CHO PHÉP CUỘN VÀ HIỂN THỊ TO */
+    [data-testid="stGraphVizChart"] {
+        overflow: auto !important;
+        background: white;
+        border-radius: 8px;
+        padding: 10px;
+        border: 1px solid #A166AB;
+    }
+    [data-testid="stGraphVizChart"] > svg {
+        min-width: 800px !important; /* Kích thước tối thiểu để không bị co rúm */
+        width: 100% !important;
+        height: auto !important;
+    }
     </style>
     """, unsafe_allow_html=True)
     
@@ -155,7 +169,6 @@ def app():
         st.write(f"👤 Xin chào: **{current_user}**")
         st.markdown("---")
         
-        # --- [ĐÃ SỬA]: THÊM MENU "Thư viện mẫu chấm" VÀ ICON TƯƠNG ỨNG ---
         choice = option_menu(
             menu_title=None,
             options=["Trang chủ", "AI Chấm văn", "Tiến trình học", "Huấn luyện não", "Thư viện mẫu chấm", "Lịch sử"],
@@ -334,8 +347,11 @@ TUYỆT ĐỐI KHÔNG lặp lại các dòng yêu cầu này. CHỈ TRẢ VỀ �
 
             if show_map and part3_graph:
                 st.markdown("---")
+                # Đã thêm caption hướng dẫn zoom toàn màn hình
+                st.caption("🔍 **Mẹo:** Di chuột vào biểu đồ và bấm biểu tượng mũi tên (View fullscreen) ở góc phải để phóng to tẹt ga nhé!")
                 try:
-                    st.graphviz_chart(part3_graph)
+                    # Fix Mindmap: Bật use_container_width=True kết hợp với CSS ở trên
+                    st.graphviz_chart(part3_graph, use_container_width=True)
                 except Exception as e:
                     st.warning(f"Lỗi hiển thị sơ đồ: {e}")
                 st.markdown("---")
@@ -353,16 +369,13 @@ TUYỆT ĐỐI KHÔNG lặp lại các dòng yêu cầu này. CHỈ TRẢ VỀ �
                 st.markdown(f'<div class="paper-card" style="border-left: 4px solid #7D4698;"><div class="card-header" style="color: #59316B;">🤖 GÓC NHÌN AI</div>{html_feedback}</div>', unsafe_allow_html=True)
 
     # ==========================================
-    # [TÍNH NĂNG MỚI] TAB: THƯ VIỆN MẪU CHẤM
+    # TAB: THƯ VIỆN MẪU CHẤM
     # ==========================================
     elif choice == "Thư viện mẫu chấm":
         st.title("📚 Thư viện Barem / Mẫu chấm điểm")
         st.write("Bấm vào từng mẫu để xem chi tiết. Nếu ưng ý, bạn chỉ cần bấm nút nạp để đưa thẳng vào bộ nhớ của AI.")
         st.markdown("---")
         
-        # -----------------------------------------------------
-        # KHOẢNG TRỐNG ĐỂ BẠN TỰ THÊM/CẬP NHẬT MẪU CHẤM
-        # -----------------------------------------------------
         RUBRIC_TEMPLATES = {
             "Nghị luận xã hội 600 chữ": {
                 "Mô tả": "Barem tiêu chuẩn dành cho các đoạn/bài văn nghị luận xã hội ngắn.",
@@ -445,7 +458,6 @@ TUYỆT ĐỐI KHÔNG lặp lại các dòng yêu cầu này. CHỈ TRẢ VỀ �
 4. Lời khuyên chiến thuật: Đưa ra 1 hành động cụ thể học sinh cần làm để tiến bộ ở bài sau."""
             }
         }
-        # -----------------------------------------------------
         
         if not RUBRIC_TEMPLATES:
             st.info("Hiện chưa có mẫu chấm nào.")
@@ -462,10 +474,8 @@ TUYỆT ĐỐI KHÔNG lặp lại các dòng yêu cầu này. CHỈ TRẢ VỀ �
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # Nút nạp trực tiếp vào KNOWLEDGE_FILE (Brain)
                     if st.button(f"🚀 Nạp '{template_name}' vào bộ nhớ AI", key=f"add_{template_name}", use_container_width=True):
                         topics = load_data(KNOWLEDGE_FILE)
-                        # Gộp cả tiêu chí và phương thức chấm lại thành nội dung học cho AI
                         combined_content = f"TIÊU CHÍ CHẤM ĐIỂM:\n{data['Tiêu chí']}\n\nPHƯƠNG THỨC CHẤM (QUAN TRỌNG):\n{data['Phương thức AI chấm']}"
                         
                         topics[template_name] = {
