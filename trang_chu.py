@@ -1,7 +1,5 @@
 # ==========================================
-# FILE: trang_chu.py - FIXED VERSION v2.2
-# Cập nhật: Làm đẹp phần Nhận xét & Fix lỗi rò rỉ cấu trúc Prompt (Tags)
-# Đã chuẩn hóa lại lỗi khoảng trắng (Indentation)
+# FILE: trang_chu.py - FIXED VERSION v2.6 (THÊM THƯ VIỆN MẪU CHẤM)
 # ==========================================
 import sys
 import os
@@ -10,6 +8,7 @@ import json
 import requests
 import pandas as pd
 from datetime import datetime
+import io
 
 # Ép Python phải nhìn vào đúng thư mục chứa file
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -37,7 +36,34 @@ try:
 except ImportError:
     def apply_custom_style(): pass
 
-# --- CÁC HÀM HỖ TRỢ (NẰM NGOÀI APP) ---
+# --- THƯ VIỆN ĐỌC FILE ---
+try:
+    import PyPDF2
+except ImportError:
+    PyPDF2 = None
+
+try:
+    import docx
+except ImportError:
+    docx = None
+
+# --- CÁC HÀM HỖ TRỢ ---
+def read_file_content(uploaded_file):
+    try:
+        if uploaded_file.name.endswith('.pdf'):
+            if not PyPDF2: return "⚠️ Thiếu thư viện PyPDF2. Hãy mở terminal gõ: pip install PyPDF2"
+            pdf = PyPDF2.PdfReader(uploaded_file)
+            return "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+        elif uploaded_file.name.endswith('.docx'):
+            if not docx: return "⚠️ Thiếu thư viện python-docx. Hãy mở terminal gõ: pip install python-docx"
+            doc = docx.Document(uploaded_file)
+            return "\n".join(para.text for para in doc.paragraphs)
+        elif uploaded_file.name.endswith('.txt'):
+            return uploaded_file.getvalue().decode("utf-8")
+    except Exception as e:
+        return f"⚠️ Lỗi đọc file: {e}"
+    return ""
+
 def load_data(filename):
     if not os.path.exists(filename):
         default_data = [] if "history" in filename else {}
@@ -84,143 +110,52 @@ def load_lottieurl(url: str):
 # HÀM CHÍNH: CHỈ CHẠY KHI ĐƯỢC GỌI TỪ WEB_AI.PY
 # ==========================================
 def app():
-    apply_custom_style() # Kích hoạt CSS từ file style.py
+    apply_custom_style() 
     
-    # --- XỬ LÝ DỮ LIỆU CÁ NHÂN HÓA ---
+    MY_API_KEY = "AIzaSyDnuY37Hi_A6NE1fIxWLPIzC8BvivLOtz0" 
+    
     current_user = st.session_state.get('user_name', 'Khach')
     
-    # 1. Tạo thư mục data_users nếu chưa có
     if not os.path.exists("data_users"):
         os.makedirs("data_users")
         
-    # 2. Tạo thư mục riêng cho user hiện tại
     user_folder = f"data_users/{current_user}"
     if not os.path.exists(user_folder):
         os.makedirs(user_folder)
         
-    # 3. Gán file dữ liệu vào đúng thư mục user
     KNOWLEDGE_FILE = f"{user_folder}/brain.json"
     HISTORY_FILE = f"{user_folder}/history.json"
-    CONFIG_FILE = f"{user_folder}/config.json" # File lưu cấu hình & API Key
+    CONFIG_FILE = f"{user_folder}/config.json"
     
-    # Đọc config (chứa trạng thái onboarding và api_key nếu có)
-    user_config = {}
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            try:
-                user_config = json.load(f)
-            except:
-                user_config = {}
-    saved_api_key = user_config.get("api_key", "") # Lấy API Key đã lưu (nếu có)
-    
-    # --- CSS TOÀN CỤC CHO NỀN VÀ NÚT BẤM ---
     st.markdown("""
     <style>
-    /* 1. Background Ombre tím xuống */
-    .stApp {
-        background: linear-gradient(to bottom, #E8DEF0 0%, #F8F4F9 100%);
-        background-attachment: fixed;
-    }
-    
-    /* 2. Màu nút bấm (Button) */
-    .stButton > button {
-        background-color: #7D4698 !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 8px !important;
-        font-weight: bold !important;
-        transition: all 0.3s ease !important;
-    }
-    
-    /* 3. Khi Hover chuột vào nút */
-    .stButton > button:hover {
-        background-color: #59316B !important;
-        box-shadow: 0 4px 12px rgba(89, 49, 107, 0.4) !important;
-        transform: translateY(-2px);
-    }
-    
-    /* 4. Đổi viền Input/Text Area */
-    .stTextInput>div>div>input:focus, .stTextArea>div>div>textarea:focus {
-        border-color: #A166AB !important;
-        box-shadow: 0 0 0 1px #A166AB !important;
-    }
-    
-    /* 5. Paper Card Style */
-    .paper-card {
-        background: white;
-        border: 1px solid #E0E0E0;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        line-height: 1.6;
-        font-size: 0.95rem;
-        color: #333;
-    }
-    
-    .card-header {
-        font-weight: 700;
-        font-size: 1.05rem;
-        color: #59316B;
-        margin-bottom: 15px;
-        padding-bottom: 10px;
-        border-bottom: 2px solid #A166AB;
-    }
-    
-    /* 6. Highlight styles */
-    .highlight-error {
-        background-color: #ffebee;
-        color: #c62828;
-        padding: 2px 4px;
-        border-radius: 3px;
-        font-weight: 600;
-    }
-    
-    .highlight-success {
-        background-color: #e8f5e9;
-        color: #1b5e20;
-        padding: 2px 4px;
-        border-radius: 3px;
-        font-weight: 600;
-    }
+    .stApp { background: linear-gradient(to bottom, #E8DEF0 0%, #F8F4F9 100%); background-attachment: fixed; }
+    .stButton > button { background-color: #7D4698 !important; color: white !important; border: none !important; border-radius: 8px !important; font-weight: bold !important; transition: all 0.3s ease !important; }
+    .stButton > button:hover { background-color: #59316B !important; box-shadow: 0 4px 12px rgba(89, 49, 107, 0.4) !important; transform: translateY(-2px); }
+    .stTextInput>div>div>input:focus, .stTextArea>div>div>textarea:focus { border-color: #A166AB !important; box-shadow: 0 0 0 1px #A166AB !important; }
+    .paper-card { background: white; border: 1px solid #E0E0E0; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); line-height: 1.6; font-size: 0.95rem; color: #333; }
+    .card-header { font-weight: 700; font-size: 1.05rem; color: #59316B; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #A166AB; }
+    .highlight-error { background-color: #ffebee; color: #c62828; padding: 2px 4px; border-radius: 3px; font-weight: 600; }
+    .highlight-success { background-color: #e8f5e9; color: #1b5e20; padding: 2px 4px; border-radius: 3px; font-weight: 600; }
+    /* Fix bảng table trong markdown */
+    table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; color: #59316B; }
     </style>
     """, unsafe_allow_html=True)
     
-    # --- MENU ĐIỀU HƯỚNG BÊN TRÁI ---
     with st.sidebar:
-        st.markdown("<h2 style='text-align: center; margin:0;'>ALEXANDER</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; margin:0;'>HỌC GIỎI VĂN</h2>", unsafe_allow_html=True)
         st.caption("AI Grading System v3.0 Pro")
-        
-        # --- THÔNG TIN USER ---
         st.markdown("---")
         st.write(f"👤 Xin chào: **{current_user}**")
-        
-        # --- CẤU HÌNH API KEY ---
-        api_key = st.text_input("🔑 API Key:", type="password", value=saved_api_key)
-        
-        # Nếu nhập key mới thì tự động lưu vào config.json
-        if api_key and api_key != saved_api_key:
-            user_config["api_key"] = api_key
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(user_config, f)
-        
-        # Hướng dẫn lấy API Key
-        with st.expander("❓ Trợ giúp: Cách lấy API Key"):
-            st.markdown('''
-                <ol style="font-size: 13px; padding-left: 20px;">
-                    <li>Vào <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: #7D4698;"><b>Google AI Studio</b></a></li>
-                    <li>Đăng nhập bằng Gmail</li>
-                    <li>Bấm nút <b>Create API key</b></li>
-                    <li>Copy mã và dán vào ô bên trên</li>
-                </ol>
-            ''', unsafe_allow_html=True)
-            
         st.markdown("---")
         
-        # --- MENU TÍNH NĂNG ---
+        # --- [ĐÃ SỬA]: THÊM MENU "Thư viện mẫu chấm" VÀ ICON TƯƠNG ỨNG ---
         choice = option_menu(
             menu_title=None,
-            options=["Trang chủ", "AI Chấm thi", "Tiến trình học", "Huấn luyện não", "Lịch sử"],
-            icons=["house", "pen", "graph-up-arrow", "cpu", "clock-history"],
+            options=["Trang chủ", "AI Chấm văn", "Tiến trình học", "Huấn luyện não", "Thư viện mẫu chấm", "Lịch sử"],
+            icons=["house", "pen", "graph-up-arrow", "cpu", "journal-bookmark", "clock-history"],
             default_index=1,
             styles={
                 "container": {"padding": "0!important", "background-color": "transparent"},
@@ -231,12 +166,8 @@ def app():
         )
         
         st.markdown("---")
-        
-        # --- TIẾN TRÌNH / THỐNG KÊ NHANH ---
         topics = load_data(KNOWLEDGE_FILE)
         st.success(f"🧠 Đã học: {len(topics)} chủ đề")
-        
-        # --- NÚT ĐĂNG XUẤT ---
         st.markdown("---")
         if st.button("🔴 Đăng xuất", use_container_width=True):
             for key in list(st.session_state.keys()):
@@ -246,42 +177,16 @@ def app():
             st.session_state['onboarding_step'] = 'intro'
             st.rerun()
 
-    # --- LOGIC CÁC TRANG ---
     if choice == "Trang chủ":
         st.markdown("""
         <style>
-        .title-gradient {
-            background: -webkit-linear-gradient(45deg, #59316B, #A166AB, #7D4698);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            font-size: 3em; font-weight: 800; margin-bottom: 0px; line-height: 1.2;
-        }
-        
-        .typing-container {
-            display: inline-block; overflow: hidden; white-space: nowrap;
-            border-right: .15em solid #7D4698; 
-            animation: typing 3.5s steps(40, end), blink-caret .75s step-end infinite;
-            font-family: 'Consolas', 'Courier New', monospace; color: #333;
-            font-size: 1.2rem; font-weight: 600; margin-bottom: 20px;
-        }
+        .title-gradient { background: -webkit-linear-gradient(45deg, #59316B, #A166AB, #7D4698); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 3em; font-weight: 800; margin-bottom: 0px; line-height: 1.2; }
+        .typing-container { display: inline-block; overflow: hidden; white-space: nowrap; border-right: .15em solid #7D4698; animation: typing 3.5s steps(40, end), blink-caret .75s step-end infinite; font-family: 'Consolas', 'Courier New', monospace; color: #333; font-size: 1.2rem; font-weight: 600; margin-bottom: 20px; }
         @keyframes typing { from { width: 0 } to { width: 100% } }
-        
         @keyframes blink-caret { from, to { border-color: transparent } 50% { border-color: #7D4698; } }
-        
-        .feature-card {
-            background: rgba(248, 244, 249, 0.8); 
-            backdrop-filter: blur(8px);
-            border: 1px solid #A166AB; 
-            border-radius: 16px;
-            padding: 20px; transition: all 0.3s ease; height: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        }
-        
-        .feature-card:hover {
-            transform: translateY(-5px); background: #ffffff;
-            box-shadow: 0 10px 15px rgba(125, 70, 152, 0.2); 
-            border-color: #7D4698; 
-        }
+        .feature-card { background: rgba(248, 244, 249, 0.8); backdrop-filter: blur(8px); border: 1px solid #A166AB; border-radius: 16px; padding: 20px; transition: all 0.3s ease; height: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .feature-card:hover { transform: translateY(-5px); background: #ffffff; box-shadow: 0 10px 15px rgba(125, 70, 152, 0.2); border-color: #7D4698; }
         .card-icon { font-size: 2.2rem; margin-bottom: 12px; display: block; }
-        
         .card-title { font-weight: 700; font-size: 1.1rem; color: #59316B; margin-bottom: 5px; }
         .card-desc { font-size: 0.95rem; color: #4b5563; line-height: 1.5; }
         </style>
@@ -293,7 +198,6 @@ def app():
             st.markdown('<div class="typing-container">Trợ lý AI chấm thi & Phân tích thông minh</div>', unsafe_allow_html=True)
             st.write("Chào mừng trở lại! Dưới đây là các tính năng chính:")
             st.write("---")
-
             col_sub1, col_sub2 = st.columns(2)
             with col_sub1:
                 st.markdown("""<div class="feature-card"><span class="card-icon">📝</span><div class="card-title">AI Chấm thi</div><div class="card-desc">Phân tích bài làm tự động dựa trên barem chuẩn xác.</div></div>""", unsafe_allow_html=True)
@@ -304,13 +208,33 @@ def app():
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown("""<div class="feature-card"><span class="card-icon">⚡</span><div class="card-title">Tốc độ cao</div><div class="card-desc">Xử lý hàng nghìn từ vựng chỉ trong vài giây.</div></div>""", unsafe_allow_html=True)
 
-    elif choice == "AI Chấm thi":
+    elif choice == "AI Chấm văn":
         st.title("📝 Phân tích văn bản")
         topics = load_data(KNOWLEDGE_FILE)
-        selected_topics = st.multiselect("📚 Kiến thức áp dụng:", list(topics.keys()))
+        selected_topics = st.multiselect("📚 Kiến thức áp dụng (Lấy từ Huấn luyện não):", list(topics.keys()))
         
         if 'current_result' not in st.session_state:
-            essay_input = st.text_area("Nhập văn bản của bạn:", height=300, placeholder="Gõ hoặc dán nội dung vào đây...")
+            uploaded_files = st.file_uploader("📂 Tải 1 hoặc NHIỀU bài làm lên (PDF, DOCX, TXT):", type=['pdf', 'docx', 'txt'], accept_multiple_files=True)
+            
+            default_text = ""
+            if uploaded_files:
+                combined_texts = []
+                for idx, file in enumerate(uploaded_files):
+                    extracted_text = read_file_content(file)
+                    if extracted_text.startswith("⚠️"):
+                        st.error(f"Lỗi đọc file {file.name}: {extracted_text}")
+                    else:
+                        combined_texts.append(f"--- BÀI LÀM {idx+1} ({file.name}) ---\n{extracted_text}\n")
+                
+                default_text = "\n".join(combined_texts)
+                
+                if len(uploaded_files) == 1:
+                    st.success(f"✅ Đã đọc thành công file: {uploaded_files[0].name}")
+                else:
+                    st.success(f"✅ Đã gộp thành công {len(uploaded_files)} file. Hệ thống sẽ bật chế độ SO SÁNH ĐỐI CHIẾU!")
+
+            essay_input = st.text_area("Nhập văn bản của bạn (nếu chọn file, nội dung sẽ tự điền):", value=default_text, height=300)
+            
             c_act1, c_act2, c_act3 = st.columns([1, 2, 1])
             with c_act2:
                 start_btn = st.button("🚀 BẮT ĐẦU PHÂN TÍCH", use_container_width=True)
@@ -321,34 +245,39 @@ def app():
                 st.rerun()
                 
         if 'start_btn' in locals() and start_btn:
-            if not api_key: 
-                st.error("⚠️ Bạn chưa nhập API Key ở thanh menu bên trái!")
+            if not MY_API_KEY or MY_API_KEY == "ĐIỀN_API_KEY_CỦA_BẠN_VÀO_ĐÂY": 
+                st.error("⚠️ Chủ hệ thống chưa cài đặt API Key trong mã nguồn!")
             elif not essay_input: 
                 st.warning("Chưa nhập nội dung")
             else:
-                with st.spinner("Tôi đang đọc và phân tích bài..."):
+                with st.spinner("Tôi đang đọc và phân tích dữ liệu..."):
                     try:
-                        genai.configure(api_key=api_key)
+                        genai.configure(api_key=MY_API_KEY)
                         model = genai.GenerativeModel([m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods][0])
                         context = "\n".join([f"- {t}: {topics[t]['content']}" for t in selected_topics]) if selected_topics else "Không có kiến thức được chọn"
                         
-                        # ĐÃ FIX: Rào lại prompt cực chặt, cấm nhại lời
-                        prompt = f"""Bạn là trợ lý AI chuyên chấm thi. Xưng hô: 'Tôi' và 'Bạn'.
-Kiến thức áp dụng: {context}
+                        prompt = f"""Bạn là trợ lý AI chuyên chấm thi và phân tích văn bản. Xưng hô: 'Tôi' và 'Bạn'.
+Kiến thức/Barem áp dụng: {context}
 
-Bài làm của học viên: 
+Nội dung dữ liệu: 
 {essay_input}
 
-NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòng yêu cầu này. CHỈ TRẢ VỀ ĐÚNG 3 PHẦN NẰM TRONG CÁC THẺ SAU:
+NHIỆM VỤ CỦA BẠN: 
+- Nếu chỉ có 1 bài: Chấm, chỉ ra lỗi sai và nhận xét bài đó theo kiến thức/barem được cung cấp.
+- Nếu có NHIỀU BÀI (có đánh dấu --- BÀI LÀM 1, 2...): Đọc và thực hiện SO SÁNH ĐỐI CHIẾU các bài với nhau.
+
+TUYỆT ĐỐI KHÔNG lặp lại các dòng yêu cầu này. CHỈ TRẢ VỀ ĐÚNG 3 PHẦN NẰM TRONG CÁC THẺ DƯỚI ĐÂY:
 
 [PHAN_1]
-(Viết lại văn bản gốc, bọc lỗi sai trong <red>...</red>, ý hay trong <green>...</green>)
+(Nếu 1 bài: Viết lại văn bản gốc, bọc lỗi sai trong <red>...</red>, ý hay trong <green>...</green>)
+(Nếu nhiều bài: Kẻ bảng so sánh tổng quan các bài về: Ưu điểm, Nhược điểm, Điểm sáng tạo bằng cú pháp Markdown)
 [/PHAN_1]
 [PHAN_2]
-(Giải thích lỗi sai và gợi ý sửa chi tiết)
+(Nếu 1 bài: Giải thích lỗi sai và gợi ý sửa chi tiết)
+(Nếu nhiều bài: Nhận xét chi tiết, chỉ ra các lỗi sai chung cần khắc phục và đánh giá bài nào ấn tượng nhất)
 [/PHAN_2]
 [PHAN_3]
-(Code graphviz tóm tắt, mẫu: digraph G {{ rankdir=LR; "A"->"B"; }})
+(Code graphviz tóm tắt sự liên kết hoặc so sánh, mẫu: digraph G {{ rankdir=LR; "A"->"B"; }})
 [/PHAN_3]"""
                         response = model.generate_content(prompt)
                         st.session_state['current_result'] = response.text
@@ -366,7 +295,6 @@ NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòn
 
             part1_essay = p1_match.group(1).strip() if p1_match else st.session_state.get('current_essay', '')
             
-            # ĐÃ FIX: Nếu AI bị ngáo không trả về đúng định dạng -> Không in raw response ra để tránh lộ prompt
             if p2_match:
                 part2_feedback = p2_match.group(1).strip()
             else:
@@ -380,7 +308,7 @@ NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòn
                 st.markdown("##### 🛠️ Bảng điều khiển")
                 c_tools = st.columns([1.5, 1, 1, 1], gap="small")
                 with c_tools[0]: 
-                    show_map = st.toggle("🧠 Bật Mindmap", value=False)
+                    show_map = st.toggle("🧠 Bật Mindmap So Sánh", value=False)
                 with c_tools[1]:
                     if st.button("🔊 Nghe lỗi", use_container_width=True):
                         audio_file = text_to_speech(part2_feedback[:500])
@@ -392,7 +320,7 @@ NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòn
                     if st.button("💾 Lưu lại", use_container_width=True):
                         h = load_data(HISTORY_FILE)
                         h.append({
-                            "date": datetime.now().strftime("%d/%m"), 
+                            "date": datetime.now().strftime("%d/%m %H:%M"), 
                             "score": 0, 
                             "feedback": full_res, 
                             "essay": st.session_state.get('current_essay', '')
@@ -410,16 +338,139 @@ NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòn
 
             c_left, c_right = st.columns([1, 1], gap="large")
             with c_left:
-                html_essay = part1_essay.replace("<red>", '<span class="highlight-error">').replace("</red>", '</span>').replace("<green>", '<span class="highlight-success">').replace("</green>", '</span>').replace("\n", "<br>")
-                st.markdown(f'<div class="paper-card"><div class="card-header">📄 BÀI CỦA BẠN</div>{html_essay}</div>', unsafe_allow_html=True)
+                html_essay = part1_essay.replace("<red>", '<span class="highlight-error">').replace("</red>", '</span>').replace("<green>", '<span class="highlight-success">').replace("</green>", '</span>')
+                st.markdown(f'<div class="paper-card"><div class="card-header">📄 BẢN GỐC / SO SÁNH</div>\n\n{html_essay}\n\n</div>', unsafe_allow_html=True)
             with c_right:
-                # --- CHUYỂN ĐỔI MARKDOWN SANG HTML TRỰC QUAN ---
                 html_feedback = re.sub(r'\*\*(.*?)\*\*', r'<b style="color: #59316B;">\1</b>', part2_feedback)
                 html_feedback = re.sub(r'(?m)^\s*[\*\-]\s+', '&#8226; ', html_feedback)
                 html_feedback = html_feedback.replace('*', '')
                 html_feedback = html_feedback.replace("\n", "<br>")
                 
                 st.markdown(f'<div class="paper-card" style="border-left: 4px solid #7D4698;"><div class="card-header" style="color: #59316B;">🤖 GÓC NHÌN AI</div>{html_feedback}</div>', unsafe_allow_html=True)
+
+   # ==========================================
+    # [TÍNH NĂNG MỚI] TAB: THƯ VIỆN MẪU CHẤM
+    # ==========================================
+    elif choice == "Thư viện mẫu chấm":
+        st.title("📚 Thư viện Barem / Mẫu chấm điểm")
+        st.write("Bấm vào từng mẫu để xem chi tiết. Nếu ưng ý, bạn chỉ cần bấm nút nạp để đưa thẳng vào bộ nhớ của AI.")
+        st.markdown("---")
+        
+        # -----------------------------------------------------
+        # KHOẢNG TRỐNG ĐỂ BẠN TỰ THÊM/CẬP NHẬT MẪU CHẤM
+        # -----------------------------------------------------
+        RUBRIC_TEMPLATES = {
+            "Nghị luận xã hội 600 chữ": {
+                "Mô tả": "Barem tiêu chuẩn dành cho các đoạn/bài văn nghị luận xã hội ngắn.",
+                "Tiêu chí": """1. Mở bài/Mở đoạn: Giới thiệu đúng vấn đề nghị luận (1.0đ)
+2. Giải thích vấn đề: Ngắn gọn, súc tích (1.5đ)
+3. Phân tích - Bàn luận: Lập luận chặt chẽ, đa chiều (3.0đ)
+4. Dẫn chứng: Sát thực tế, tiêu biểu (2.0đ)
+5. Liên hệ bản thân & Rút ra bài học (1.5đ)
+6. Điểm diễn đạt, chính tả, sáng tạo (1.0đ)""",
+                "Phương thức AI chấm": "Hãy chấm điểm cực kỳ khắt khe ở phần 'Phân tích - Bàn luận' và 'Dẫn chứng'. Yêu cầu học sinh không dùng những dẫn chứng quá cũ. Kiểm tra tính logic giữa các câu văn."
+            },
+            
+            "Phân tích tác phẩm văn học (Cơ bản)": {
+                "Mô tả": "Barem chấm bài làm văn phân tích nhân vật hoặc đoạn trích thơ/văn xuôi.",
+                "Tiêu chí": """1. Đảm bảo cấu trúc (Mở - Thân - Kết) (0.5đ)
+2. Xác định đúng yêu cầu đề bài (0.5đ)
+3. Triển khai nội dung sâu sắc, chia luận điểm rõ ràng (6.0đ)
+4. Phân tích được nét đặc sắc Nghệ thuật (1.5đ)
+5. Chính tả, ngữ pháp, chữ viết (0.5đ)
+6. Sáng tạo, cảm nhận riêng (1.0đ)""",
+                "Phương thức AI chấm": "Đọc kỹ phần phân tích nghệ thuật (các biện pháp tu từ, nhịp điệu, giọng văn). Nếu học sinh chỉ phân tích nội dung mà bỏ quên nghệ thuật, trừ thẳng 1.5đ. Chỉ ra các câu văn diễn đạt lủng củng."
+            },
+
+            "Đoạn văn NLXH 200 chữ": {
+                "Mô tả": "Barem chấm đoạn văn nghị luận xã hội 200 chữ đánh giá theo các mức độ: Nhận biết, Thông hiểu, Vận dụng và Sáng tạo.",
+                "Tiêu chí": """- Nhận biết: Xác định đúng vấn đề cần nghị luận, cách thức trình bày đoạn văn.
+- Thông hiểu: Biết cách nêu quan điểm cá nhân; phối hợp các thao tác lập luận để phân tích, làm sáng tỏ vấn đề.
+- Vận dụng: Đề xuất được hệ thống ý phù hợp; vận dụng tốt kĩ năng tạo lập văn bản (dùng từ, viết câu, liên kết, biểu đạt).
+- Sáng tạo: Có sáng tạo trong diễn đạt, có giọng điệu cá nhân riêng biệt.""",
+                "Phương thức AI chấm": "Hãy chấm sát theo 4 mức độ (Nhận biết, Thông hiểu, Vận dụng, Sáng tạo). Đánh giá kĩ sự mạch lạc trong lập luận, khả năng nêu quan điểm cá nhân và nhận xét về sự sáng tạo, giọng điệu riêng của người viết."
+            },
+            
+            "Đoạn văn NLVH 200 chữ (Nhân vật)": {
+                "Mô tả": "Barem chấm đoạn văn 200 chữ nghị luận về một nhân vật trong tác phẩm văn học.",
+                "Tiêu chí": """1. Hình thức (0.25đ): Đúng cấu trúc đoạn văn (không xuống dòng), dung lượng khoảng 200 chữ (cho phép sai số 10-20%).
+2. Xác định vấn đề (0.25đ): Nêu đúng tên nhân vật và đặc điểm/khía cạnh cần nghị luận ngay từ câu mở đoạn.
+3. Triển khai nội dung (1.0đ): Phân tích chi tiết nghệ thuật (hành động, tâm trạng, ngôn ngữ), làm rõ ý nghĩa/thông điệp, dẫn chứng xác thực và có nhận xét nghệ thuật.
+4. Sáng tạo & Cảm xúc (0.25đ): Có liên tưởng, so sánh, ngôn từ biểu cảm, góc nhìn riêng.
+5. Chính tả & Ngữ pháp (0.25đ): Mạch lạc, không mắc lỗi diễn đạt cơ bản.""",
+                "Phương thức AI chấm": "Bắt lỗi cực gắt ở phần hình thức: NẾU HỌC SINH XUỐNG DÒNG, trừ thẳng điểm hình thức (đoạn văn không được xuống dòng). Yêu cầu AI kiểm tra kĩ việc học sinh có trích dẫn từ văn bản hay không và đánh giá mức độ biểu cảm trong ngôn từ."
+            },
+
+            "Bài văn NLVH 600 chữ (Thang 4.0)": {
+                "Mô tả": "Barem chấm bài văn 600 chữ phân tích tác phẩm văn học/thơ. Đi kèm yêu cầu AI viết đoạn văn 'Nâng tầm' làm mẫu.",
+                "Tiêu chí": """1. Kiến thức nội dung & Đặc trưng thể loại (1.5đ):
+- Mức 4: Phân tích sâu sắc nghệ thuật, sự vận động cảm xúc. Không bị 'diễn xuôi thơ'.
+- Mức 3: Hiểu nội dung, có phân tích nghệ thuật nhưng chưa thực sự sắc sảo.
+- Mức 2: Chủ yếu diễn xuôi, nghệ thuật hời hợt. Mức 1: Lạc đề/sai ý nghĩa.
+2. Cấu trúc & Dung lượng (0.5đ):
+- Mức 4: Đủ Mở-Thân-Kết, liên kết chặt chẽ, xấp xỉ 600 chữ.
+- Mức 2: Thiếu phần, bố cục không rõ, bài quá ngắn/dài.
+3. Tư duy sáng tạo & Liên hệ (1.0đ):
+- Mức 4: Góc nhìn độc đáo, có liên hệ/so sánh tác phẩm khác.
+- Mức 2: Liên hệ khiên cưỡng. Mức 1: Không mở rộng.
+4. Kỹ năng diễn đạt & Chính tả (1.0đ):
+- Mức 4: Văn phong cảm xúc, chuẩn thuật ngữ, không lỗi. Mức 2: Lỗi diễn đạt, lủng củng.""",
+                "Phương thức AI chấm": """BẮT BUỘC TRẢ VỀ KẾT QUẢ THEO FORMAT SAU:
+1. Bảng điểm tóm tắt: (STT Tiêu chí | Điểm đạt được | Nhận xét nhanh).
+2. Tổng điểm: .../4.0.
+3. Phân tích lỗi sai cụ thể: Trích dẫn lại ít nhất 2 câu văn bị lỗi của học sinh và chỉ ra cách sửa.
+4. Đoạn văn 'Nâng tầm': Hãy chọn 1 đoạn trong bài và viết lại nó theo phong cách xuất sắc, sâu sắc hơn để làm mẫu cho học sinh."""
+            },
+
+            "Bài văn NLXH 600 chữ (Thang 4.0)": {
+                "Mô tả": "Barem chấm bài văn 600 chữ nghị luận xã hội, chú trọng khả năng tư duy phản biện và tính thực tiễn của dẫn chứng.",
+                "Tiêu chí": """1. Giải quyết vấn đề & Lập luận (1.5đ):
+- Mức 4: Lý lẽ sắc sảo, logic, giải quyết triệt để. Mức 3: Lập luận đúng nhưng chưa sâu. Mức 2: Chung chung, giáo điều. Mức 1: Lạc đề.
+2. Dẫn chứng & Tính thực tiễn (1.0đ):
+- Mức 4: Dẫn chứng tiêu biểu, mới mẻ, mang tính thời sự, phân tích khéo léo. Mức 2: Lối mòn, hời hợt. Mức 1: Không có dẫn chứng.
+3. Tư duy phản biện & Mở rộng (0.75đ):
+- Mức 4: Lật ngược vấn đề, nhìn nhận nhiều chiều, giải pháp độc đáo. Mức 2: Phản biện yếu, lặp lại quan điểm cũ.
+4. Hình thức, Ngôn ngữ & Dung lượng (0.75đ):
+- Mức 4: Bố cục 3 phần, ngôn từ đanh thép, truyền cảm hứng, khoảng 600 chữ. Mức 2: Lỗi diễn đạt, sai dung lượng.""",
+                "Phương thức AI chấm": """BẮT BUỘC TRẢ VỀ KẾT QUẢ THEO FORMAT SAU:
+1. Bảng điểm tóm tắt: Tiêu chí | Điểm đạt được | Nhận xét nhanh. Tổng điểm: .../4.0.
+2. Phân tích chi tiết: 
+- Điểm sáng: Trích dẫn 1 câu văn hoặc 1 ý tưởng xuất sắc nhất của học sinh.
+- Lỗ hổng tư duy: Chỉ ra điểm yếu trong lập luận hoặc dẫn chứng cần thay thế.
+3. Đoạn văn 'Nâng cấp': Chọn một đoạn viết 'non' nhất của học sinh và viết lại theo phong cách nghị luận sắc sảo, chuyên sâu hơn.
+4. Lời khuyên chiến thuật: Đưa ra 1 hành động cụ thể học sinh cần làm để tiến bộ ở bài sau."""
+            }
+        }
+        # -----------------------------------------------------
+        
+        if not RUBRIC_TEMPLATES:
+            st.info("Hiện chưa có mẫu chấm nào.")
+        else:
+            for template_name, data in RUBRIC_TEMPLATES.items():
+                with st.expander(f"📌 Mẫu chấm: {template_name}"):
+                    st.markdown(f"**Mô tả:** {data['Mô tả']}")
+                    
+                    st.markdown("**📋 Tiêu chí & Thang điểm:**")
+                    st.write(data["Tiêu chí"])
+                    
+                    st.markdown("**🤖 Hướng dẫn AI cách chấm:**")
+                    st.write(data["Phương thức AI chấm"])
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    # Nút nạp trực tiếp vào KNOWLEDGE_FILE (Brain)
+                    if st.button(f"🚀 Nạp '{template_name}' vào bộ nhớ AI", key=f"add_{template_name}", use_container_width=True):
+                        topics = load_data(KNOWLEDGE_FILE)
+                        # Gộp cả tiêu chí và phương thức chấm lại thành nội dung học cho AI
+                        combined_content = f"TIÊU CHÍ CHẤM ĐIỂM:\n{data['Tiêu chí']}\n\nPHƯƠNG THỨC CHẤM (QUAN TRỌNG):\n{data['Phương thức AI chấm']}"
+                        
+                        topics[template_name] = {
+                            "content": combined_content, 
+                            "date": datetime.now().strftime("%d/%m/%Y")
+                        }
+                        save_data(KNOWLEDGE_FILE, topics)
+                        
+                        st.success(f"✅ Đã nạp thành công '{template_name}' vào hệ thống! Bạn có thể sang tab **AI Chấm văn** để sử dụng ngay.")
 
     elif choice == "Tiến trình học":
         st.title("📈 Biểu đồ năng lực")
@@ -444,6 +495,7 @@ NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòn
 
     elif choice == "Huấn luyện não":
         st.title("🎓 Quản lý Kiến thức (Brain)")
+        st.caption("Mẹo: Dán các Tiêu chí từ 'Thư viện mẫu chấm' vào đây để hệ thống học cách chấm bài nhé!")
         tab1, tab2 = st.tabs(["➕ Thêm kiến thức mới", "📋 Danh sách đã học"])
         with tab1:
             t_name = st.text_input("Tên chủ đề:")
@@ -491,7 +543,6 @@ NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòn
                     st.markdown("---")
                     st.markdown("**🤖 PHẦN ĐÃ SỬA VÀ NHẬN XÉT:**")
                     
-                    # CHỖ NÀY CŨNG ĐÃ ĐƯỢC SỬA Regex cho phần lịch sử
                     p1_hist = re.search(r'\[PHAN_1\](.*?)\[/PHAN_1\]', feedback_content, re.DOTALL)
                     p2_hist = re.search(r'\[PHAN_2\](.*?)\[/PHAN_2\]', feedback_content, re.DOTALL)
 
@@ -499,7 +550,7 @@ NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòn
                         part1 = p1_hist.group(1).strip()
                         part2 = p2_hist.group(1).strip()
                         
-                        html_essay_hist = part1.replace("<red>", '<span class="highlight-error">').replace("</red>", '</span>').replace("<green>", '<span class="highlight-success">').replace("</green>", '</span>').replace("\n", "<br>")
+                        html_essay_hist = part1.replace("<red>", '<span class="highlight-error">').replace("</red>", '</span>').replace("<green>", '<span class="highlight-success">').replace("</green>", '</span>')
                         
                         formatted_part2 = re.sub(r'\*\*(.*?)\*\*', r'<b style="color:#59316B;">\1</b>', part2)
                         formatted_part2 = re.sub(r'(?m)^\s*[\*\-]\s+', '&#8226; ', formatted_part2)
@@ -508,11 +559,10 @@ NHIỆM VỤ: Phân tích bài làm. TUYỆT ĐỐI KHÔNG lặp lại các dòn
 
                         col_hist1, col_hist2 = st.columns([1, 1], gap="medium")
                         with col_hist1:
-                            st.markdown(f'<div class="paper-card"><div class="card-header">Sửa trên bài</div>{html_essay_hist}</div>', unsafe_allow_html=True)
+                            st.markdown(f'<div class="paper-card"><div class="card-header">Sửa trên bài / Bảng So sánh</div>\n\n{html_essay_hist}\n\n</div>', unsafe_allow_html=True)
                         with col_hist2:
                             st.markdown(f'<div class="paper-card" style="border-left: 4px solid #7D4698;"><div class="card-header">Nhận xét</div>{formatted_part2}</div>', unsafe_allow_html=True)
                     else:
-                        # Làm sạch các tag nếu AI trả lỗi cấu trúc để không bị lộ
                         clean_fb = re.sub(r'\[/?PHAN_\d\]', '', feedback_content).strip()
                         st.write(clean_fb)
                     
